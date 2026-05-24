@@ -1,6 +1,4 @@
-"""
-Telegram Expense Bot — ប្រើ Groq (Llama 3.3) ជំនួស Gemini
-"""
+
 import sys
 
 if sys.version_info >= (3, 13):
