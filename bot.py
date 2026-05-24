@@ -1,19 +1,12 @@
 """
-Python 3.13/3.14 Compatibility Fix for python-telegram-bot
-បំណែកប្រែសម្រួលសម្រាប់ Python 3.13+ — បន្ថែម slot ដែលបាត់បង់ក្នុង Updater class
-Official fix reference: python-telegram-bot v21.0 — "Add Missing Slot to Updater"
+Telegram Expense Bot — ប្រើ Groq (Llama 3.3) ជំនួស Gemini
 """
 import sys
 
-# ត្រួតពិនិត្យថាតើជា Python 3.13+ ឬអត់
 if sys.version_info >= (3, 13):
     import telegram.ext._updater
-
-    # បន្ថែម slot ដែលបាត់បង់ទៅក្នុង Updater class
-    # នេះជាការកែប្រែផ្លូវការពី python-telegram-bot v21.0
     missing_slot = '_Updater__polling_cleanup_cb'
     if missing_slot not in telegram.ext._updater.Updater.__slots__:
-        # បង្កើត class ថ្មីដែលមាន slot ពេញលេញ
         original_slots = list(telegram.ext._updater.Updater.__slots__)
         original_slots.append(missing_slot)
         telegram.ext._updater.Updater.__slots__ = tuple(original_slots)
@@ -32,7 +25,9 @@ from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler,
     filters, ContextTypes, ConversationHandler
 )
-from google import genai as google_genai
+
+# ---- Groq Client ----
+from groq import Groq
 
 from database import (
     init_db, get_user, create_user, set_pin, get_pin,
@@ -43,8 +38,8 @@ from database import (
 )
 from translations import t
 
-TOKEN      = os.environ.get("TOKEN", "")
-GEMINI_KEY = os.environ.get("GEMINI_KEY", "")
+TOKEN    = os.environ.get("TOKEN", "")
+GROQ_KEY = os.environ.get("GROQ_KEY", "")
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -72,17 +67,17 @@ CATEGORIES = [
 
 authenticated_users = set()
 
-# ---- Health Check Server for UptimeRobot ----
+# ---- Health Check Server ----
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b"Bot is running!")
     def log_message(self, format, *args):
-        pass  # បិទ log
+        pass
 
 def run_health_server():
-    port = int(os.environ.get("PORT", 8080))
+    port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(("0.0.0.0", port), HealthHandler)
     server.serve_forever()
 
@@ -473,10 +468,11 @@ async def ai_advice(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(t(uid, 'pin_enter'))
         return ConversationHandler.END
 
-    if not GEMINI_KEY:
+    if not GROQ_KEY:
         await update.message.reply_text(
-            "❌ GEMINI_KEY មិនទាន់ set!\n"
-            "សូម បន្ថែម GEMINI_KEY=AIza... ក្នុង .env file"
+            "❌ GROQ_KEY មិនទាន់ set!\n"
+            "សូមបន្ថែម GROQ_KEY=your_key ក្នុង .env file\n"
+            "យក key ឥតគិតថ្លៃនៅ: https://console.groq.com"
         )
         return ConversationHandler.END
 
@@ -499,23 +495,33 @@ async def ai_advice(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     summary += f"សរុប: {total:,.0f} រៀល\nថវិកា: {budget:,.0f} រៀល"
 
     try:
-        client = google_genai.Client(api_key=GEMINI_KEY)
-        prompt = (
-            "អ្នកជាទីប្រឹក្សាហិរញ្ញវត្ថុ។ "
-            "វិភាគចំណាយ និងណែនាំការសន្សំប្រាក់ជាភាសាខ្មែរ "
-            "(ខ្លី 200 ពាក្យ):\n\n" + summary
+        client = Groq(api_key=GROQ_KEY)
+        chat_completion = client.chat.completions.create(
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "អ្នកជាទីប្រឹក្សាហិរញ្ញវត្ថុ។ "
+                        "វិភាគចំណាយ និងណែនាំការសន្សំប្រាក់ជាភាសាខ្មែរ។ "
+                        "ឆ្លើយខ្លី មិនលើស 200 ពាក្យ។"
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": summary
+                }
+            ],
+            model="llama-3.3-70b-versatile",
+            max_tokens=500,
+            temperature=0.7,
         )
-        response = client.models.generate_content(
-            model="gemini-2.0-flash-lite",
-            contents=prompt
-        )
-        advice = response.text
-        await update.message.reply_text(f"🤖 AI ណែនាំ:\n\n{advice}")
+        advice = chat_completion.choices[0].message.content
+        await update.message.reply_text(f"🤖 AI ណែនាំ (Llama 3.3):\n\n{advice}")
 
     except Exception as e:
-        logger.error(f"Gemini Error [{type(e).__name__}]: {e}")
+        logger.error(f"Groq Error [{type(e).__name__}]: {e}")
         await update.message.reply_text(
-            f"❌ Gemini Error [{type(e).__name__}]:\n{str(e)[:200]}"
+            f"❌ Groq Error [{type(e).__name__}]:\n{str(e)[:200]}"
         )
     return ConversationHandler.END
 
@@ -553,18 +559,17 @@ if __name__ == "__main__":
 
     if not TOKEN:
         print("❌ ERROR: TOKEN មិនទាន់ set ក្នុង .env!")
-        print("   .env ត្រូវមាន: TOKEN=your_bot_token")
         exit(1)
 
-    if not GEMINI_KEY:
-        print("⚠️  WARNING: GEMINI_KEY មិនទាន់ set ក្នុង .env!")
+    if not GROQ_KEY:
+        print("⚠️  WARNING: GROQ_KEY មិនទាន់ set!")
+        print("   យក key ឥតគិតថ្លៃ: https://console.groq.com")
         print("   /ai នឹងមិនដំណើរការទេ")
     else:
-        print("✅ Gemini API Key: OK")
+        print("✅ Groq API Key: OK")
 
-    # Start health check server for UptimeRobot
     threading.Thread(target=run_health_server, daemon=True).start()
-    print(f"✅ Health server running on port {os.environ.get('PORT', 8080)}")
+    print(f"✅ Health server running on port {os.environ.get('PORT', 10000)}")
 
     init_db()
     app = ApplicationBuilder().token(TOKEN).build()
