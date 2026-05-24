@@ -667,5 +667,11 @@ if __name__ == "__main__":
                 print("✅ Job Queue: ON")
             else:
                 print("⚠️  Job Queue: OFF")
-                print("🤖 Bot កំពុងដំណើរការ...")
-                app.run_polling(drop_pending_updates=True)
+
+            print("🤖 Bot កំពុងដំណើរការ...")
+            app.run_polling(drop_pending_updates=True)
+
+        except Exception as e:
+            print(f"❌ Bot crashed: {e}")
+            print("🔄 Restarting in 5 seconds...")
+            time.sleep(5)
