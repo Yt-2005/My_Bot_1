@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: khmer-expense-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    envVars:
+      - key: TOKEN
+        value: your_token_here
+      - key: GEMINI_KEY
+        value: your_gemini_key_here
