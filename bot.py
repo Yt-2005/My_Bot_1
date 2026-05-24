@@ -13,6 +13,7 @@ if sys.version_info >= (3, 13):
         print("✅ បានបន្ថែម slot សម្រួល Python 3.13+ សម្រាប់ Updater")
 
 import os
+import time
 import logging
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -575,94 +576,102 @@ if __name__ == "__main__":
     print(f"✅ Health server running on port {os.environ.get('PORT', 10000)}")
 
     init_db()
-    app = ApplicationBuilder().token(TOKEN).build()
 
-    start_conv = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
-        states={PIN_VERIFY: [MessageHandler(filters.TEXT & ~filters.COMMAND, pin_verify)]},
-        fallbacks=common_fallbacks(), allow_reentry=True,
-    )
-    pin_conv = ConversationHandler(
-        entry_points=[CommandHandler("setpin", setpin_start)],
-        states={PIN_SET: [MessageHandler(filters.TEXT & ~filters.COMMAND, pin_set_handler)]},
-        fallbacks=common_fallbacks(), allow_reentry=True,
-    )
-    lang_conv = ConversationHandler(
-        entry_points=[CommandHandler("lang", lang_start)],
-        states={LANG_CHOOSE: [MessageHandler(filters.TEXT & ~filters.COMMAND, lang_choose)]},
-        fallbacks=common_fallbacks(), allow_reentry=True,
-    )
-    add_conv = ConversationHandler(
-        entry_points=[CommandHandler("add", add_start)],
-        states={
-            PIN_VERIFY:    [MessageHandler(filters.TEXT & ~filters.COMMAND, pin_verify)],
-            CHOOSE_CAT:    [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_category)],
-            ENTER_AMOUNT:  [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_amount)],
-            ENTER_NOTE:    [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_note)],
-            ENTER_TAG:     [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_tag)],
-            IS_RECURRING:  [MessageHandler(filters.TEXT & ~filters.COMMAND, is_recurring)],
-            RECURRING_INT: [MessageHandler(filters.TEXT & ~filters.COMMAND, recurring_interval)],
-        },
-        fallbacks=common_fallbacks(), allow_reentry=True,
-    )
-    goal_conv = ConversationHandler(
-        entry_points=[CommandHandler("goal", goal_start)],
-        states={
-            GOAL_NAME:         [MessageHandler(filters.TEXT & ~filters.COMMAND, goal_handler)],
-            GOAL_TARGET:       [MessageHandler(filters.TEXT & ~filters.COMMAND, goal_name)],
-            GOAL_DEADLINE:     [MessageHandler(filters.TEXT & ~filters.COMMAND, goal_target)],
-            GOAL_DEADLINE + 1: [MessageHandler(filters.TEXT & ~filters.COMMAND, goal_deadline)],
-        },
-        fallbacks=common_fallbacks(), allow_reentry=True,
-    )
-    budget_conv = ConversationHandler(
-        entry_points=[CommandHandler("budget", budget_start)],
-        states={BUDGET_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, budget_set)]},
-        fallbacks=common_fallbacks(), allow_reentry=True,
-    )
-    reminder_conv = ConversationHandler(
-        entry_points=[CommandHandler("reminder", reminder_start)],
-        states={REMINDER_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, reminder_set_handler)]},
-        fallbacks=common_fallbacks(), allow_reentry=True,
-    )
-    date_conv = ConversationHandler(
-        entry_points=[CommandHandler("date", date_start)],
-        states={SEARCH_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, date_search)]},
-        fallbacks=common_fallbacks(), allow_reentry=True,
-    )
-    tag_conv = ConversationHandler(
-        entry_points=[CommandHandler("tags", tags_start)],
-        states={SEARCH_TAG: [MessageHandler(filters.TEXT & ~filters.COMMAND, tag_search)]},
-        fallbacks=common_fallbacks(), allow_reentry=True,
-    )
-    delete_conv = ConversationHandler(
-        entry_points=[CommandHandler("delete", delete_start)],
-        states={DELETE_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, delete_handler)]},
-        fallbacks=common_fallbacks(), allow_reentry=True,
-    )
+    while True:
+        try:
+            app = ApplicationBuilder().token(TOKEN).build()
 
-    app.add_handler(start_conv)
-    app.add_handler(pin_conv)
-    app.add_handler(lang_conv)
-    app.add_handler(add_conv)
-    app.add_handler(goal_conv)
-    app.add_handler(budget_conv)
-    app.add_handler(reminder_conv)
-    app.add_handler(date_conv)
-    app.add_handler(tag_conv)
-    app.add_handler(delete_conv)
-    app.add_handler(CommandHandler("today",     today))
-    app.add_handler(CommandHandler("month",     month))
-    app.add_handler(CommandHandler("compare",   compare))
-    app.add_handler(CommandHandler("recurring", recurring))
-    app.add_handler(CommandHandler("ai",        ai_advice))
-    app.add_handler(MessageHandler(filters.PHOTO, receipt_handler))
+            start_conv = ConversationHandler(
+                entry_points=[CommandHandler("start", start)],
+                states={PIN_VERIFY: [MessageHandler(filters.TEXT & ~filters.COMMAND, pin_verify)]},
+                fallbacks=common_fallbacks(), allow_reentry=True,
+            )
+            pin_conv = ConversationHandler(
+                entry_points=[CommandHandler("setpin", setpin_start)],
+                states={PIN_SET: [MessageHandler(filters.TEXT & ~filters.COMMAND, pin_set_handler)]},
+                fallbacks=common_fallbacks(), allow_reentry=True,
+            )
+            lang_conv = ConversationHandler(
+                entry_points=[CommandHandler("lang", lang_start)],
+                states={LANG_CHOOSE: [MessageHandler(filters.TEXT & ~filters.COMMAND, lang_choose)]},
+                fallbacks=common_fallbacks(), allow_reentry=True,
+            )
+            add_conv = ConversationHandler(
+                entry_points=[CommandHandler("add", add_start)],
+                states={
+                    PIN_VERIFY:    [MessageHandler(filters.TEXT & ~filters.COMMAND, pin_verify)],
+                    CHOOSE_CAT:    [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_category)],
+                    ENTER_AMOUNT:  [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_amount)],
+                    ENTER_NOTE:    [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_note)],
+                    ENTER_TAG:     [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_tag)],
+                    IS_RECURRING:  [MessageHandler(filters.TEXT & ~filters.COMMAND, is_recurring)],
+                    RECURRING_INT: [MessageHandler(filters.TEXT & ~filters.COMMAND, recurring_interval)],
+                },
+                fallbacks=common_fallbacks(), allow_reentry=True,
+            )
+            goal_conv = ConversationHandler(
+                entry_points=[CommandHandler("goal", goal_start)],
+                states={
+                    GOAL_NAME:         [MessageHandler(filters.TEXT & ~filters.COMMAND, goal_handler)],
+                    GOAL_TARGET:       [MessageHandler(filters.TEXT & ~filters.COMMAND, goal_name)],
+                    GOAL_DEADLINE:     [MessageHandler(filters.TEXT & ~filters.COMMAND, goal_target)],
+                    GOAL_DEADLINE + 1: [MessageHandler(filters.TEXT & ~filters.COMMAND, goal_deadline)],
+                },
+                fallbacks=common_fallbacks(), allow_reentry=True,
+            )
+            budget_conv = ConversationHandler(
+                entry_points=[CommandHandler("budget", budget_start)],
+                states={BUDGET_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, budget_set)]},
+                fallbacks=common_fallbacks(), allow_reentry=True,
+            )
+            reminder_conv = ConversationHandler(
+                entry_points=[CommandHandler("reminder", reminder_start)],
+                states={REMINDER_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, reminder_set_handler)]},
+                fallbacks=common_fallbacks(), allow_reentry=True,
+            )
+            date_conv = ConversationHandler(
+                entry_points=[CommandHandler("date", date_start)],
+                states={SEARCH_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, date_search)]},
+                fallbacks=common_fallbacks(), allow_reentry=True,
+            )
+            tag_conv = ConversationHandler(
+                entry_points=[CommandHandler("tags", tags_start)],
+                states={SEARCH_TAG: [MessageHandler(filters.TEXT & ~filters.COMMAND, tag_search)]},
+                fallbacks=common_fallbacks(), allow_reentry=True,
+            )
+            delete_conv = ConversationHandler(
+                entry_points=[CommandHandler("delete", delete_start)],
+                states={DELETE_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, delete_handler)]},
+                fallbacks=common_fallbacks(), allow_reentry=True,
+            )
 
-    if app.job_queue:
-        app.job_queue.run_repeating(send_reminders, interval=3600, first=10)
-        print("✅ Job Queue: ON")
-    else:
-        print("⚠️  Job Queue: OFF")
+            app.add_handler(start_conv)
+            app.add_handler(pin_conv)
+            app.add_handler(lang_conv)
+            app.add_handler(add_conv)
+            app.add_handler(goal_conv)
+            app.add_handler(budget_conv)
+            app.add_handler(reminder_conv)
+            app.add_handler(date_conv)
+            app.add_handler(tag_conv)
+            app.add_handler(delete_conv)
+            app.add_handler(CommandHandler("today",     today))
+            app.add_handler(CommandHandler("month",     month))
+            app.add_handler(CommandHandler("compare",   compare))
+            app.add_handler(CommandHandler("recurring", recurring))
+            app.add_handler(CommandHandler("ai",        ai_advice))
+            app.add_handler(MessageHandler(filters.PHOTO, receipt_handler))
 
-    print("🤖 Bot កំពុងដំណើរការ...")
-   app.run_polling(drop_pending_updates=True)
+            if app.job_queue:
+                app.job_queue.run_repeating(send_reminders, interval=3600, first=10)
+                print("✅ Job Queue: ON")
+            else:
+                print("⚠️  Job Queue: OFF")
+
+            print("🤖 Bot កំពុងដំណើរការ...")
+            app.run_polling(drop_pending_updates=True)
+
+        except Exception as e:
+            print(f"❌ Bot crashed: {e}")
+            print("🔄 Restarting in 5 seconds...")
+            time.sleep(5)
