@@ -1,4 +1,6 @@
-
+"""
+Telegram Expense Bot — Gemini Key Rotation (Auto switch when quota exhausted)
+"""
 import sys
 
 if sys.version_info >= (3, 13):
@@ -23,9 +25,7 @@ from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler,
     filters, ContextTypes, ConversationHandler
 )
-
-# ---- Groq Client ----
-from groq import Groq
+from google import genai as google_genai
 
 from database import (
     init_db, get_user, create_user, set_pin, get_pin,
@@ -36,8 +36,53 @@ from database import (
 )
 from translations import t
 
-TOKEN    = os.environ.get("TOKEN", "")
-GROQ_KEY = os.environ.get("GROQ_KEY", "")
+TOKEN = os.environ.get("TOKEN", "")
+
+# ---- Gemini Key Rotation ----
+GEMINI_KEYS = [
+    os.environ.get("GEMINI_KEY_1", ""),
+    os.environ.get("GEMINI_KEY_2", ""),
+    os.environ.get("GEMINI_KEY_3", ""),
+]
+GEMINI_KEYS = [k for k in GEMINI_KEYS if k]
+current_key_index = 0
+
+def get_current_gemini_key():
+    if not GEMINI_KEYS:
+        return ""
+    return GEMINI_KEYS[current_key_index]
+
+def rotate_gemini_key():
+    global current_key_index
+    if len(GEMINI_KEYS) <= 1:
+        return False
+    current_key_index = (current_key_index + 1) % len(GEMINI_KEYS)
+    print(f"🔄 ប្តូរ Gemini Key → Key #{current_key_index + 1}")
+    return True
+
+def call_gemini(prompt):
+    global current_key_index
+    max_retries = len(GEMINI_KEYS) if GEMINI_KEYS else 0
+    for attempt in range(max_retries):
+        key = get_current_gemini_key()
+        if not key:
+            return None, "គ្មាន Gemini Key ទេ!"
+        try:
+            client = google_genai.Client(api_key=key)
+            response = client.models.generate_content(
+                model="gemini-2.0-flash-lite",
+                contents=prompt
+            )
+            return response.text, None
+        except Exception as e:
+            err = str(e)
+            if "429" in err or "RESOURCE_EXHAUSTED" in err or "quota" in err.lower():
+                print(f"⚠️ Key #{current_key_index + 1} quota អស់ — ប្តូរ key...")
+                if not rotate_gemini_key():
+                    return None, "❌ Gemini keys ទាំងអស់ quota អស់! សូមរង់ចាំ 24 ម៉ោង។"
+            else:
+                return None, f"❌ Gemini Error: {err[:200]}"
+    return None, "❌ Gemini keys ទាំងអស់ quota អស់! សូមរង់ចាំ 24 ម៉ោង។"
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -65,7 +110,6 @@ CATEGORIES = [
 
 authenticated_users = set()
 
-# ---- Health Check Server ----
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -79,7 +123,6 @@ def run_health_server():
     server = HTTPServer(("0.0.0.0", port), HealthHandler)
     server.serve_forever()
 
-# ---- Helper functions ----
 def is_authenticated(user_id):
     pin = get_pin(user_id)
     if not pin:
@@ -100,7 +143,6 @@ def common_fallbacks():
         CommandHandler("recurring", recurring),
     ]
 
-# ---- Handlers ----
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     create_user(uid)
@@ -460,67 +502,32 @@ async def delete_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def ai_advice(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-    logger.info(f"DEBUG: /ai called by {uid}")
-
     if not is_authenticated(uid):
         await update.message.reply_text(t(uid, 'pin_enter'))
         return ConversationHandler.END
-
-    if not GROQ_KEY:
-        await update.message.reply_text(
-            "❌ GROQ_KEY មិនទាន់ set!\n"
-            "សូមបន្ថែម GROQ_KEY=your_key ក្នុង .env file\n"
-            "យក key ឥតគិតថ្លៃនៅ: https://console.groq.com"
-        )
+    if not GEMINI_KEYS:
+        await update.message.reply_text("❌ គ្មាន Gemini Key ទេ!\nសូមបន្ថែម GEMINI_KEY_1, GEMINI_KEY_2, GEMINI_KEY_3 នៅ Render")
         return ConversationHandler.END
-
     await update.message.reply_text(t(uid, 'ai_thinking'))
-
     rows   = get_monthly(uid)
     total  = get_monthly_total(uid)
     budget = get_budget(uid)
-
     if not rows:
-        await update.message.reply_text(
-            "📭 គ្មានទិន្នន័យចំណាយខែនេះ!\n"
-            "សូម /add បន្ថែមចំណាយជាមុនសិន 😊"
-        )
+        await update.message.reply_text("📭 គ្មានទិន្នន័យចំណាយខែនេះ!\nសូម /add បន្ថែមចំណាយជាមុនសិន 😊")
         return ConversationHandler.END
-
     summary = "ចំណាយខែនេះ:\n"
     for cat, amt in rows:
         summary += f"- {cat}: {amt:,.0f} រៀល\n"
     summary += f"សរុប: {total:,.0f} រៀល\nថវិកា: {budget:,.0f} រៀល"
-
-    try:
-        client = Groq(api_key=GROQ_KEY)
-        chat_completion = client.chat.completions.create(
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "អ្នកជាទីប្រឹក្សាហិរញ្ញវត្ថុ។ "
-                        "វិភាគចំណាយ និងណែនាំការសន្សំប្រាក់ជាភាសាខ្មែរ។ "
-                        "ឆ្លើយខ្លី មិនលើស 200 ពាក្យ។"
-                    )
-                },
-                {
-                    "role": "user",
-                    "content": summary
-                }
-            ],
-            model="llama-3.3-70b-versatile",
-            max_tokens=500,
-            temperature=0.7,
-        )
-        advice = chat_completion.choices[0].message.content
-        await update.message.reply_text(f"🤖 AI ណែនាំ (Llama 3.3):\n\n{advice}")
-
-    except Exception as e:
-        logger.error(f"Groq Error [{type(e).__name__}]: {e}")
-        await update.message.reply_text(
-            f"❌ Groq Error [{type(e).__name__}]:\n{str(e)[:200]}"
-        )
+    prompt = (
+        "អ្នកជាទីប្រឹក្សាហិរញ្ញវត្ថុ។ "
+        "វិភាគចំណាយ និងណែនាំការសន្សំប្រាក់ជាភាសាខ្មែរ (ខ្លី 200 ពាក្យ):\n\n" + summary
+    )
+    advice, error = call_gemini(prompt)
+    if error:
+        await update.message.reply_text(error)
+    else:
+        await update.message.reply_text(f"🤖 AI ណែនាំ (Key #{current_key_index + 1}):\n\n{advice}")
     return ConversationHandler.END
 
 async def receipt_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -554,17 +561,15 @@ async def send_reminders(ctx: ContextTypes.DEFAULT_TYPE):
             logger.error(f"Reminder error for {uid}: {e}")
 
 if __name__ == "__main__":
-
     if not TOKEN:
-        print("❌ ERROR: TOKEN មិនទាន់ set ក្នុង .env!")
+        print("❌ ERROR: TOKEN មិនទាន់ set!")
         exit(1)
-
-    if not GROQ_KEY:
-        print("⚠️  WARNING: GROQ_KEY មិនទាន់ set!")
-        print("   យក key ឥតគិតថ្លៃ: https://console.groq.com")
-        print("   /ai នឹងមិនដំណើរការទេ")
+    if not GEMINI_KEYS:
+        print("⚠️  WARNING: គ្មាន Gemini Key ទេ!")
     else:
-        print("✅ Groq API Key: OK")
+        print(f"✅ Gemini Keys: {len(GEMINI_KEYS)} key(s) loaded")
+        for i, k in enumerate(GEMINI_KEYS):
+            print(f"   Key #{i+1}: {k[:8]}...")
 
     threading.Thread(target=run_health_server, daemon=True).start()
     print(f"✅ Health server running on port {os.environ.get('PORT', 10000)}")
@@ -575,20 +580,17 @@ if __name__ == "__main__":
     start_conv = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={PIN_VERIFY: [MessageHandler(filters.TEXT & ~filters.COMMAND, pin_verify)]},
-        fallbacks=common_fallbacks(),
-        allow_reentry=True,
+        fallbacks=common_fallbacks(), allow_reentry=True,
     )
     pin_conv = ConversationHandler(
         entry_points=[CommandHandler("setpin", setpin_start)],
         states={PIN_SET: [MessageHandler(filters.TEXT & ~filters.COMMAND, pin_set_handler)]},
-        fallbacks=common_fallbacks(),
-        allow_reentry=True,
+        fallbacks=common_fallbacks(), allow_reentry=True,
     )
     lang_conv = ConversationHandler(
         entry_points=[CommandHandler("lang", lang_start)],
         states={LANG_CHOOSE: [MessageHandler(filters.TEXT & ~filters.COMMAND, lang_choose)]},
-        fallbacks=common_fallbacks(),
-        allow_reentry=True,
+        fallbacks=common_fallbacks(), allow_reentry=True,
     )
     add_conv = ConversationHandler(
         entry_points=[CommandHandler("add", add_start)],
@@ -601,8 +603,7 @@ if __name__ == "__main__":
             IS_RECURRING:  [MessageHandler(filters.TEXT & ~filters.COMMAND, is_recurring)],
             RECURRING_INT: [MessageHandler(filters.TEXT & ~filters.COMMAND, recurring_interval)],
         },
-        fallbacks=common_fallbacks(),
-        allow_reentry=True,
+        fallbacks=common_fallbacks(), allow_reentry=True,
     )
     goal_conv = ConversationHandler(
         entry_points=[CommandHandler("goal", goal_start)],
@@ -612,38 +613,32 @@ if __name__ == "__main__":
             GOAL_DEADLINE:     [MessageHandler(filters.TEXT & ~filters.COMMAND, goal_target)],
             GOAL_DEADLINE + 1: [MessageHandler(filters.TEXT & ~filters.COMMAND, goal_deadline)],
         },
-        fallbacks=common_fallbacks(),
-        allow_reentry=True,
+        fallbacks=common_fallbacks(), allow_reentry=True,
     )
     budget_conv = ConversationHandler(
         entry_points=[CommandHandler("budget", budget_start)],
         states={BUDGET_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, budget_set)]},
-        fallbacks=common_fallbacks(),
-        allow_reentry=True,
+        fallbacks=common_fallbacks(), allow_reentry=True,
     )
     reminder_conv = ConversationHandler(
         entry_points=[CommandHandler("reminder", reminder_start)],
         states={REMINDER_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, reminder_set_handler)]},
-        fallbacks=common_fallbacks(),
-        allow_reentry=True,
+        fallbacks=common_fallbacks(), allow_reentry=True,
     )
     date_conv = ConversationHandler(
         entry_points=[CommandHandler("date", date_start)],
         states={SEARCH_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, date_search)]},
-        fallbacks=common_fallbacks(),
-        allow_reentry=True,
+        fallbacks=common_fallbacks(), allow_reentry=True,
     )
     tag_conv = ConversationHandler(
         entry_points=[CommandHandler("tags", tags_start)],
         states={SEARCH_TAG: [MessageHandler(filters.TEXT & ~filters.COMMAND, tag_search)]},
-        fallbacks=common_fallbacks(),
-        allow_reentry=True,
+        fallbacks=common_fallbacks(), allow_reentry=True,
     )
     delete_conv = ConversationHandler(
         entry_points=[CommandHandler("delete", delete_start)],
         states={DELETE_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, delete_handler)]},
-        fallbacks=common_fallbacks(),
-        allow_reentry=True,
+        fallbacks=common_fallbacks(), allow_reentry=True,
     )
 
     app.add_handler(start_conv)
@@ -667,7 +662,7 @@ if __name__ == "__main__":
         app.job_queue.run_repeating(send_reminders, interval=3600, first=10)
         print("✅ Job Queue: ON")
     else:
-        print("⚠️  Job Queue: OFF — run: pip install 'python-telegram-bot[job-queue]'")
+        print("⚠️  Job Queue: OFF")
 
     print("🤖 Bot កំពុងដំណើរការ...")
     app.run_polling()
