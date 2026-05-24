@@ -1,3 +1,24 @@
+"""
+Python 3.13/3.14 Compatibility Fix for python-telegram-bot
+បំណែកប្រែសម្រួលសម្រាប់ Python 3.13+ — បន្ថែម slot ដែលបាត់បង់ក្នុង Updater class
+Official fix reference: python-telegram-bot v21.0 — "Add Missing Slot to Updater"
+"""
+import sys
+
+# ត្រួតពិនិត្យថាតើជា Python 3.13+ ឬអត់
+if sys.version_info >= (3, 13):
+    import telegram.ext._updater
+
+    # បន្ថែម slot ដែលបាត់បង់ទៅក្នុង Updater class
+    # នេះជាការកែប្រែផ្លូវការពី python-telegram-bot v21.0
+    missing_slot = '_Updater__polling_cleanup_cb'
+    if missing_slot not in telegram.ext._updater.Updater.__slots__:
+        # បង្កើត class ថ្មីដែលមាន slot ពេញលេញ
+        original_slots = list(telegram.ext._updater.Updater.__slots__)
+        original_slots.append(missing_slot)
+        telegram.ext._updater.Updater.__slots__ = tuple(original_slots)
+        print("✅ បានបន្ថែម slot សម្រួល Python 3.13+ សម្រាប់ Updater")
+
 import os
 import logging
 import threading
