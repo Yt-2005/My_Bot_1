@@ -30,9 +30,17 @@ def init_db():
             language TEXT DEFAULT 'km',
             daily_reminder INTEGER DEFAULT 0,
             reminder_time TEXT DEFAULT '20:00',
-            budget_limit REAL DEFAULT 0
+            budget_limit REAL DEFAULT 0,
+            is_logged_in INTEGER DEFAULT 0
         )
     """)
+
+    # បន្ថែម column is_logged_in បើមិនទាន់មាន (សម្រាប់ database ចាស់)
+    try:
+        c.execute("ALTER TABLE users ADD COLUMN is_logged_in INTEGER DEFAULT 0")
+        conn.commit()
+    except:
+        pass
 
     c.execute("""
         CREATE TABLE IF NOT EXISTS savings_goals (
@@ -78,6 +86,23 @@ def get_pin(user_id):
     row = c.fetchone()
     conn.close()
     return row[0] if row else None
+
+# ── Persistent Login ──────────────────────────────────
+def set_logged_in(user_id, status: bool):
+    conn = sqlite3.connect(DB)
+    c = conn.cursor()
+    c.execute("UPDATE users SET is_logged_in=? WHERE user_id=?",
+              (1 if status else 0, user_id))
+    conn.commit()
+    conn.close()
+
+def get_logged_in(user_id):
+    conn = sqlite3.connect(DB)
+    c = conn.cursor()
+    c.execute("SELECT is_logged_in FROM users WHERE user_id=?", (user_id,))
+    row = c.fetchone()
+    conn.close()
+    return bool(row[0]) if row else False
 
 def set_language(user_id, lang):
     conn = sqlite3.connect(DB)
